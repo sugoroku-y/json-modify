@@ -1,1 +1,16 @@
-{"compilerOptions":{"target":"ES2018","module":"commonjs","lib":["ESNext"],"outDir":"../lib","strict":true,"strictNullChecks":true},"exclude":["*.test.ts"]}
+{
+  "compilerOptions": {
+    "target": "ES2018",
+    "module": "commonjs",
+    "lib": [
+      "ESNext"
+    ],
+    "outDir": "../lib",
+    "sourceMap": true,
+    "strict": true,
+    "strictNullChecks": true
+  },
+  "exclude": [
+    "*.test.ts"
+  ]
+}
