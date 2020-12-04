@@ -1,0 +1,6 @@
+/coverage/
+/lib/*.js.map
+/src/
+/.gitignore
+/.vscode/
+
