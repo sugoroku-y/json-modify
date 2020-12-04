@@ -11,35 +11,45 @@ function error(strings: TemplateStringsArray, ...values: unknown[]): never {
   );
 }
 
-function assert(condition: false, message?: string): never;
+function assert(condition: false, message?: string | (() => string)): never;
 function assert(
   condition: boolean,
-  message?: string
+  message?: string | (() => string)
 ): asserts condition is true;
 function assert<T extends [] | {}>(
   condition: T | undefined | null,
-  message?: string
+  message?: string | (() => string)
 ): asserts condition is T;
 function assert<T>(
   condition: unknown,
   typeGuard: (o: unknown) => o is T,
-  message?: string
+  message?: string | (() => string)
 ): asserts condition is T;
 function assert<
   T extends
-    | [false, string?]
-    | [boolean, string?]
-    | [unknown, string?]
-    | [unknown, (o: unknown) => boolean, string?]
+    | [false, (string | (() => string))?]
+    | [boolean, (string | (() => string))?]
+    | [unknown, (string | (() => string))?]
+    | [unknown, (o: unknown) => boolean, (string | (() => string))?]
 >(...args: T) {
   const [condition, message] =
-    typeof args[1] === 'function'
+    typeof args[1] === 'function' && args[1].length === 1
       ? [args[1](args[0]), args[2]]
-      : !args[1] || typeof args[1] === 'string'
-      ? [args[0], args[1]]
-      : error`Unreachable`;
+      : !args[1] ||
+        typeof args[1] === 'string' ||
+        (typeof args[1] === 'function' && args[1].length === 0)
+      ? [args[0], args[1] as string | (() => string) | undefined]
+      : // istanbul ignore next
+        error`Unreachable`;
   if (!condition) {
-    throw new Error(message);
+    throw new Error(
+      typeof message === 'string'
+        ? message
+        : message
+        ? message()
+        : // istanbul ignore next
+          undefined
+    );
   }
 }
 
@@ -95,6 +105,112 @@ export function evaluate(s: string): string | number | boolean | null {
   return s;
 }
 
+function type(o: unknown): string {
+  if (o === null) return 'null';
+  if (typeof o !== 'object') return typeof o;
+  if (Array.isArray(o)) return 'array';
+  return 'object';
+}
+
+/**
+ * オブジェクトのパス指定
+ *
+ * @interface IObjectPath
+ */
+interface IObjectPath {
+  type: 'object';
+  /**
+   * このプロパティの親までのパス
+   */
+  path: string;
+  /**
+   * このプロパティの名前
+   */
+  name: string;
+}
+/**
+ * 配列のパス指定
+ *
+ * @interface IObjectPath
+ */
+interface IArrayPath {
+  type: 'array';
+  /**
+   * このプロパティの親までのパス
+   */
+  path: string;
+  /** このプロパティのインデックス */
+  index: number;
+  /** `index`の前に挿入するか(`'before'`)、後ろに挿入するか(``)。省略時は挿入ではなく置き換え。 */
+  insert?: 'before' | 'after';
+}
+/**
+ * 配列のパス指定(ただし末尾に追加)
+ *
+ * @interface IObjectPath
+ */
+interface IArrayAppendPath {
+  type: 'array';
+  /**
+   * このプロパティの親までのパス
+   */
+  path: string;
+  index?: undefined;
+}
+
+type IPath = IObjectPath | IArrayPath | IArrayAppendPath;
+
+/**
+ * 階層指定のパスを解析
+ *
+ * @export
+ * @param {string} wholepath
+ * @returns {IPath[]} 解析結果
+ */
+export function parsePath(wholepath: string): IPath[] {
+  assert(wholepath, 'wholepath must not be empty.');
+  const parsed: IPath[] = [];
+  const re = /(?:(?:^|\.)(?<name>[^.[]+)|\['(?<quotedName>[^\\']*(?:\\.[^\\']*)*)'\]|\[(?:(?<prepend>\+)?(?<index>\d+)(?<insert>\+)?|(?<append>\+))\])(?=(?<next>\.|\['?)|$)/gsy;
+  while (re.lastIndex < wholepath.length) {
+    const {groups: m, index} = re.exec(wholepath) ?? {};
+    assert(m, () => `Unrecognized path: ${wholepath}`);
+    const path = wholepath.slice(0, index);
+    parsed.push(
+      m.name || m.quotedName
+        ? {type: 'object', path, name: m.name || unescape(m.quotedName)}
+        : m.index
+        ? {
+            type: 'array',
+            path,
+            index: +m.index,
+            insert: m.prepend
+              ? m.insert
+                ? error`One of the prefix \`+\` and the sufix \`+\` can be specified.: \`${path}\``
+                : 'before'
+              : m.insert
+              ? 'after'
+              : undefined,
+          }
+        : m.append
+        ? {type: 'array', path}
+        : // istanbul ignore next
+          error`Unreachable`
+    );
+  }
+  return parsed;
+}
+
+/**
+ * オブジェクトかどうかを判定する型ガード。
+ *
+ * @param {unknown} obj
+ * @returns {obj is object}
+ */
+function isObject(obj: unknown): obj is object {
+  // typeof null、typeof []も'object'なのでtypeof obj === 'object'以外にチェックが必要
+  return !!obj && typeof obj === 'object' && !Array.isArray(obj);
+}
+
 /**
  * オブジェクトに対して指定のコマンドを実行する。
  *
@@ -103,67 +219,79 @@ export function evaluate(s: string): string | number | boolean | null {
  * @param {unknown} value
  * @returns
  */
-export function modify(obj: any, command: string) {
+export function modify(obj: unknown, command: string) {
   const [path, value] = /^\s*delete\s+(\S(?:.*?\S)?)\s*$/.test(command)
     ? [RegExp.$1, undefined] // deleteのときはundefinedを設定する
     : /^\s*set\s+(\S(?:.*?\S)?)\s*=\s*(\S(?:.*?\S)?)$/.test(command)
     ? [RegExp.$1, evaluate(RegExp.$2)] // 値を各型に合わせて変換
     : error`Unrecognized command: ${command}`;
-  const root =
-    obj && typeof obj === 'object'
-      ? obj
-      : (obj = /^\[[^']/.test(path) ? [] : {});
-  const re = /(?:(?:^|\.)(?<name>[^.[]+)|(?:\['(?<quotedName>[^\\']*(?:\\.[^\\']*)*)'\]|\[(?:(?<index>\d+)(?<insert>\+)?|(?<append>\+))\]))(?=(?<next>\.|\['?)|$)/gsy;
-  for (;;) {
-    const {groups: m, index} = re.exec(path) ?? {};
-    if (!m) {
-      break;
-    }
-    let name;
-    if (m.name || m.quotedName) {
-      assert(
-        obj && typeof obj === 'object' && !Array.isArray(obj),
-        'obj should be an object.'
-      );
-      name = m.name || unescape(m.quotedName);
-    } else if (m.index || m.append) {
-      assert(
-        obj && typeof obj === 'object' && Array.isArray(obj),
-        'obj should be an array.'
-      );
-      name = m.index ? +m.index : obj.length;
-      if (m.insert) {
-        obj.splice(++name, 0, undefined);
-      }
-    } else {
-      break;
-    }
-    if (!m.next) {
-      if (value !== undefined) {
-        obj[name] = value;
-      } else {
-        delete obj[name];
-      }
-      return root;
-    }
-    if (obj[name] !== undefined) {
-      if (
-        // typeof null === 'object'なのでnullかどうかを先にチェック
-        obj[name] === null ||
-        // 配列でもtypeofは'object'
-        typeof obj[name] !== 'object' ||
-        // 次がプロパティ名なら配列でエラー、インデックスなら配列でなければエラー
-        (m.next === '[') !== Array.isArray(obj[name])
-      ) {
-        return error`${path.slice(0, re.lastIndex)} is not an ${
-          m.next === '[' ? 'array' : 'object'
-        }: for path: ${path}`;
-      }
-    } else {
-      // 次がプロパティ名かインデックスかで配列を作成するかオブジェクトを作成するかを変える
-      obj[name] = m.next === '[' ? [] : {};
-    }
-    obj = obj[name];
+  const parsed = parsePath(path);
+  if (value === undefined) {
+    assert(
+      parsed.every(
+        info =>
+          info.type === 'object' || (info.index !== undefined && !info.insert)
+      ),
+      () => `\`+\` can be specified in the set command: ${path}`
+    );
   }
-  return error`Unsupported path: ${path}`;
+  const root = [obj];
+  obj = root;
+  parsed.unshift({type: 'array', path: 'obj', index: 0});
+  for (let i = 0; i < parsed.length; ++i) {
+    const info = parsed[i];
+    let name;
+    if (info.type === 'object') {
+      // プロパティの親はオブジェクトでなければならない。
+      assert(
+        obj,
+        isObject,
+        () => `\`${info.path}\` should be object, but is ${type(obj)}.`
+      );
+      name = info.name;
+    } else {
+      // プロパティの親は配列でなければならない。
+      assert(
+        obj,
+        Array.isArray,
+        () => `\`${info.path}\` should be array, but is ${type(obj)}.`
+      );
+      if (info.index === undefined) {
+        // 最後に追加する
+        name = obj.length;
+      } else {
+        // 指定のインデックス
+        name = info.index;
+        if (info.insert) {
+          // beforeならインデックスの前に挿入なので位置としてはそのまま、afterはインデックスの後に挿入なので+1
+          name += info.insert === 'before' ? 0 : 1;
+          // あらかじめundefinedを挿入しておく
+          obj.splice(name, 0, undefined);
+        }
+      }
+    }
+    if (i === parsed.length - 1) {
+      // 最後のプロパティの場合、値を設定する
+      if (value === undefined) {
+        // valueがundefinedの場合は削除
+        delete (obj as any)[name];
+      } else {
+        (obj as any)[name] = value;
+      }
+      // 設定/削除したので終了
+      break;
+    }
+    // プロパティ指定の途中なら次のプロパティに移動
+    let next = (obj as any)[name];
+    if (next === undefined) {
+      if (value === undefined) {
+        // 削除のときにプロパティが存在していなければ何もしない
+        break;
+      }
+      // 存在していなければ、次のプロパティが配列かオブジェクトに応じて新規作成
+      next = (obj as any)[name] = parsed[i + 1].type === 'object' ? {} : [];
+    }
+    obj = next;
+  }
+  return root[0];
 }
