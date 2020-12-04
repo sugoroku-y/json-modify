@@ -1,5 +1,9 @@
 {
-  "private": true,
+  "name": "json-editor",
+  "version": "0.0.1",
+  "license": "MIT",
+  "main": "./lib/main.js",
+  "bin": "bin/json-editor.js",
   "jest": {
     "testMatch": [
       "**/src/*.test.ts"
