@@ -1,8 +1,8 @@
 import * as fs from 'fs';
-import * as optionalist from 'optionalist';
+import {parse, unnamed, helpString} from 'optionalist';
 import {modify} from './json-editor';
 
-const option = optionalist.parse({
+const option = parse({
   input: {
     describe: '入力ファイルを指定します。省略時には標準入力から読み込みます。',
     example: 'input-jsonfile',
@@ -21,7 +21,7 @@ const option = optionalist.parse({
     describe: '出力ファイルを指定します。省略時には標準出力に書き出します。',
     example: 'output-jsonfile',
   },
-  [optionalist.unnamed]: {
+  [unnamed]: {
     describe: `
 JSONファイルに適用する編集コマンドを指定します。
   set プロパティ名=値  プロパティに値を設定します。
@@ -57,7 +57,7 @@ async function read(stream: NodeJS.ReadStream) {
           ? fs.promises.readFile(option.input, 'utf8')
           : read(process.stdin))
       );
-  for (const command of option[optionalist.unnamed]) {
+  for (const command of option[unnamed]) {
     // 編集コマンド実行
     obj = modify(obj, command);
   }
