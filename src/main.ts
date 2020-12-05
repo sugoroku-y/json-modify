@@ -38,6 +38,12 @@ JSONファイルに適用する編集コマンドを指定します。
     example:
       "foo.bar={'string'|+number|-number|true|false|null|[values...]|{name:value,...}}|delete foo.bar}",
   },
+  help: {
+    type: 'boolean',
+    nature: 'alone',
+    alias: 'h',
+    describe: 'このヘルプを表示します',
+  },
 });
 
 async function read(stream: NodeJS.ReadStream) {
@@ -46,6 +52,11 @@ async function read(stream: NodeJS.ReadStream) {
     buffer = Buffer.concat([buffer, chunk]);
   }
   return buffer.toString('utf8');
+}
+
+if ('help' in option) {
+  process.stderr.write(option[helpString]);
+  process.exit(0);
 }
 
 (async () => {
