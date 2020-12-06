@@ -65,9 +65,11 @@ if ('help' in option) {
   let obj = option.new
     ? undefined
     : JSON.parse(
-        await (option.input
+        (await (option.input
           ? fs.promises.readFile(option.input, 'utf8')
-          : read(process.stdin))
+        : read(process.stdin)))
+        // コメントを除去(文字列中に存在する//や/*～*/を除去してしまわないように文字列にもマッチさせて残す)
+        .replace(/("[^\\"]*(?:\\.[^\\"]*)*")|\/\*.*?\*\/|\/\/[^\r\n]*/gs, (_, $1) => $1)
       );
   for (const command of option[unnamed]) {
     // 編集コマンド実行
