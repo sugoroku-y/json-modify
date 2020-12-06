@@ -4,21 +4,37 @@ import {modify} from './json-editor';
 
 const option = parse({
   input: {
-    describe: '入力ファイルを指定します。省略時には標準入力から読み込みます。',
+    describe: `
+    入力ファイルを指定します。
+    省略時には標準入力から読み込みます。
+    JSONC(コメントを含むJSON)も読み込み可能ですが、コメントは失われます。
+    `,
     example: 'input-jsonfile',
   },
   new: {
     type: 'boolean',
-    describe: '入力ファイルを読み込まずに、新規作成します。',
+    describe: `
+    入力ファイルを読み込まずに、新規作成します。
+    `,
   },
   indent: {
     type: 'number',
     nature: ['default', 2],
-    describe: 'インデントとして使用する空白の文字数を指定します。',
+    describe: `
+    インデントとして使用する空白の文字数を指定します。
+    省略時は2が指定されたものと見なされます。
+    0を指定すると改行もしなくなります。
+    `,
     example: 'indent_count',
   },
   output: {
-    describe: '出力ファイルを指定します。省略時には標準出力に書き出します。',
+    describe: `
+    出力ファイルを指定します。
+    省略時には標準出力に書き出します。
+    入力ファイルと同じファイルを指定した場合更新されますが、
+    内容に変更が無い場合でも、タイムスタンプは更新されます。
+    同時に他のプロセスが書き込んでいた場合の内容は未定義です。
+    `,
     example: 'output-jsonfile',
   },
   [unnamed]: {
@@ -35,9 +51,10 @@ const option = parse({
     プロパティ名には.や[]をつけて階層を指定できます。
     配列に要素を追加したい場合は[{追加したいインデックス}+]を指定します。
     指定のインデックスの前に挿入したい場合は[+{インデックス}]のように指定します
-    インデックスを省略した場合には最後に追加されます。`,
+    インデックスを省略した場合([+])には最後に追加されます。
+    `,
     example:
-      "foo.bar={'string'|+number|-number|true|false|null|[values...]|{name:value,...}}|delete foo.bar}",
+      "set foo.bar[+]={'string'|+number|-number|true|false|null|[values...]|{name:value,...}}|delete foo.bar}",
   },
   help: {
     type: 'boolean',
